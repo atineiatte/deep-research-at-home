@@ -1,3 +1,7 @@
+"""
+requirements:  PyPDF2, pdfplumber
+"""
+
 import logging
 import json
 import asyncio
@@ -11,8 +15,7 @@ from open_webui.constants import TASKS
 from open_webui.main import generate_chat_completions
 from open_webui.models.users import User
 
-name = "DeepResearch"
-
+name = "Deep Research at Home"
 
 def setup_logger():
     logger = logging.getLogger(name)
@@ -624,11 +627,27 @@ class Pipe:
         try:
             # Try to use Open WebUI's fetch functionality if available
             try:
-                from open_webui.routers.retrieval import fetch_url
+                from open_webui.retrieval.web.utils import get_web_loader
 
                 logger.debug(f"Using Open WebUI to fetch URL: {url}")
-                fetch_task = asyncio.create_task(fetch_url(url))
+
+                loader = get_web_loader(
+                    url,
+                    verify_ssl=self.__request__.app.state.config.ENABLE_RAG_WEB_LOADER_SSL_VERIFICATION,
+                    requests_per_second=self.__request__.app.state.config.RAG_WEB_SEARCH_CONCURRENT_REQUESTS,
+                )
+
+                fetch_task = asyncio.create_task(loader.aload())
                 content = await asyncio.wait_for(fetch_task, timeout=20.0)
+
+                if (
+                    "file" in content
+                    and "data" in content["file"]
+                    and "content" in content["file"]["data"]
+                ):
+                    content = content["file"]["data"]["content"]
+                else:
+                    content = None
 
                 if content:
                     # Check if this is a PDF by examining content
@@ -924,7 +943,7 @@ Format your summary with clear paragraphs and appropriate organization.""",
                             )
                         )
                         summary_response = await asyncio.wait_for(
-                            summarize_task, timeout=30.0
+                            summarize_task, timeout=60.0
                         )
 
                         # Extract the summarized content
